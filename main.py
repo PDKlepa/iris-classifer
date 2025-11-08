@@ -1,31 +1,81 @@
 from sklearn import datasets
+from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score, GridSearchCV
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt 
-import mpl_toolkits.mplot3d  # noqa: F401
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
 
-
+# Data
 iris = datasets.load_iris()
+X, y = iris.data, iris.target
 
-fig = plt.figure(1, figsize=(8, 6))
-ax = fig.add_subplot(111, projection="3d", elev=-150, azim= 110)
-
-X_reduced = PCA(n_components=3).fit_transform(iris.data)
-
-ax.scatter(
-    X_reduced[:, 0],
-    X_reduced[:, 1],
-    X_reduced[:, 2],
-    c = iris.target,
-    s=40
-
+# Split
+X_tr, X_te, y_tr, y_te = train_test_split(
+    X, y, test_size=0.2, stratify=y, random_state=42
 )
 
-ax.set_title("First three PCA dimension")
-ax.set_xlabel("1st Eigenvector")
-ax.xaxis.set_ticklabels([])
-ax.set_ylabel("2nd Eigenvector")
-ax.yaxis.set_ticklabels([])
-ax.set_zlabel("3rd Eigenvector")
-ax.zaxis.set_ticklabels([])
+# Pipeline (scaler -> PCA -> classifier)
+pipe = Pipeline([
+    ("scaler", StandardScaler()),
+    ("pca", PCA()),
+    ("clf", LogisticRegression(max_iter=200))
+])
 
+# CV
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+base_scores = cross_val_score(pipe, X_tr, y_tr, cv=cv, scoring="f1_macro")
+
+# Hyperparameter search
+param_grid = [
+    # With PCA (try LR)
+    {
+        "pca": [PCA()],
+        "pca__n_components": [2, 3],
+        "clf": [LogisticRegression(max_iter=500)],
+        "clf__C": [0.1, 1, 10],
+        "clf__penalty": ["l2"],
+        "clf__solver": ["lbfgs"],
+    },
+    # With PCA (try SVC)
+    {
+        "pca": [PCA()],
+        "pca__n_components": [2, 3],
+        "clf": [SVC(probability=True)],
+        "clf__C": [0.1, 1, 10],
+        "clf__gamma": ["scale", "auto"],
+        "clf__kernel": ["rbf", "linear"],
+    },
+    # No PCA (passthrough)
+    {
+        "pca": ["passthrough"],
+        "clf": [LogisticRegression(max_iter=500)],
+        "clf__C": [0.1, 1, 10],
+        "clf__penalty": ["l2"],
+        "clf__solver": ["lbfgs"],
+    },
+    {
+        "pca": ["passthrough"],
+        "clf": [SVC(probability=True)],
+        "clf__C": [0.1, 1, 10],
+        "clf__gamma": ["scale", "auto"],
+        "clf__kernel": ["rbf", "linear"],
+    },
+]
+
+search = GridSearchCV(
+    pipe, param_grid=param_grid, cv=cv, scoring="f1_macro", n_jobs=-1, refit=True
+)
+search.fit(X_tr, y_tr)
+
+best_model = search.best_estimator_
+
+# Test evaluation
+y_pred = best_model.predict(X_te)
+print(classification_report(y_te, y_pred, target_names=iris.target_names))
+
+cm = confusion_matrix(y_te, y_pred)
+ConfusionMatrixDisplay(cm, display_labels=iris.target_names).plot()
 plt.show()
