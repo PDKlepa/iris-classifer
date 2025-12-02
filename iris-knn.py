@@ -2,6 +2,9 @@ from sklearn import datasets
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import accuracy_score
+
 
 iris = datasets.load_iris()
 
@@ -17,7 +20,11 @@ scaler.fit(X_train)
 X_train_scaled = scaler.transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
-print(X_train.shape)
-print(X_test.shape)
-print(y_train.shape)
-print(y_test.shape)
+knn = KNeighborsClassifier(n_neighbors=5)
+
+knn.fit(X_train_scaled, y_train)
+
+y_pred = knn.predict(X_test_scaled)
+
+accuracy = accuracy_score(y_test, y_pred)
+print("KNN accuracy: ", accuracy)
